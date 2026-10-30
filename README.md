@@ -1,433 +1,575 @@
-# Multi-Agent Enterprise Code Reviewer & PR Quality Gate
+# 🎓 Student Management System (SMS) - Full-Stack Web Application
 
-An enterprise-grade, multi-agent code inspection system and automated Pull Request quality gate built with **FastAPI**, **LangGraph**, **Python AST analysis**, **Qdrant Vector Database**, and **React + TypeScript + Vite**.
+A clean, robust, and beginner-friendly Full-Stack Student Management System built using **React.js**, **JavaScript**, **CSS3**, **Python Flask**, **MySQL**, and **RESTful APIs**.
 
-The application automatically inspects source code changes, flags security vulnerabilities (injection, hardcoded secrets, unsafe dynamic evaluation, command injection), diagnoses performance bottlenecks (quadratic loops, inefficient membership checks, unclosed files, sync blocking I/O in async routines), enforces style standards (mutable defaults, excessive arguments, broad exceptions), retrieves semantic codebase context, and evaluates configurable quality gate policies (PASS, FAIL, INCOMPLETE, ERROR).
-
----
-
-## 1. Problem Statement
-
-Modern software engineering teams face three primary challenges when reviewing code:
-1. **Human Fatigue & Bottlenecks:** Pull requests sit waiting for peer reviews, and critical vulnerabilities (e.g., SQL injection, dynamic `eval()`, hardcoded credentials) slip into production.
-2. **Fragility of Pure LLM Approaches:** Unconstrained LLMs frequently hallucinate nonexistent line numbers, invent fictitious APIs, or miss deterministic syntax errors.
-3. **Lack of Repository Context:** Single-file diff reviews miss cross-file dependencies and repository conventions.
-
-**Multi-Agent Enterprise Code Reviewer & PR Quality Gate** solves this by pairing **deterministic AST static analysis guardrails** with **LangGraph-coordinated specialized AI agents** and **Qdrant semantic vector retrieval**. It runs locally out-of-the-box in local demonstration mode without external API keys, while scaling seamlessly to live GitHub webhook PR evaluation and OpenAI-compatible LLM endpoints.
+Designed specifically for an **Electronics & Instrumentation Engineering** student preparing for **Software Engineering interviews**, this project demonstrates full-stack architecture, database design, parameterized SQL, input validation, transaction management, and responsive frontend design without unnecessary framework complexity.
 
 ---
 
-## 2. Key Features
+## 📌 Table of Contents
 
-- **Multi-Agent Coordination via LangGraph:**
-  - **Security Agent:** Inspects injection risks, dynamic execution (`eval`/`exec`), credential exposure, unsafe subprocess usage, and OWASP Top 10 guidelines.
-  - **Performance Agent:** Pinpoints quadratic loops, repeated regex compilations, linear list lookups inside loops, and blocking I/O in async routines.
-  - **Style & Maintainability Agent:** Detects mutable default arguments, overly complex signatures, overly long functions, and broad exception suppression.
-- **Deterministic Python AST Engine:**
-  - Real structural code analysis using Python's native `ast` module.
-  - Safe: **Never executes, evals, or modifies submitted source code**.
-  - Graceful syntax error handling reporting exact line and offset diagnostics.
-- **Qdrant Semantic Codebase Retrieval:**
-  - Indexes local code repositories into token-chunked vector representations.
-  - Dual operational modes: Real embedded in-memory Qdrant (`QdrantClient(":memory:")`) for zero-dependency local runs, and remote Qdrant server support for Docker.
-  - Embeddings abstraction: Offline deterministic 384-dimensional hypersphere projection and optional OpenAI embeddings.
-- **Configurable Quality Gate:**
-  - Configurable policy thresholds (`block_on_critical`, `block_on_high`, `max_medium_allowed`, `max_low_allowed`).
-  - Clear gate verdicts: `PASS`, `FAIL`, `INCOMPLETE`, or `ERROR` with blocking violations breakdown.
-- **GitHub Pull Request Webhook Integration:**
-  - HMAC-SHA256 signature verification (`X-Hub-Signature-256`).
-  - PR event handling (`opened`, `synchronize`, `reopened`) with replay deduplication.
-  - Safe dry-run mode generating inline review comments without posting to GitHub unless authorized.
-- **Persistent SQLite Audit Log:**
-  - Full review history and aggregated metrics (pass rates, severity distribution, category counts) persisted across restarts.
-- **Modern Responsive Dashboard:**
-  - Overview metrics, interactive code editor with sample demo presets, repository indexing UI, semantic code search, and live PR webhook simulator.
+1. [Project Overview](#1-project-overview)
+2. [Problem Statement](#2-problem-statement)
+3. [Key Features](#3-key-features)
+4. [Technology Stack](#4-technology-stack)
+5. [System Architecture & Data Flow](#5-system-architecture--data-flow)
+6. [Folder Structure](#6-folder-structure)
+7. [Database Schema & Data Model](#7-database-schema--data-model)
+8. [REST API Documentation](#8-rest-api-documentation)
+9. [Prerequisites](#9-prerequisites)
+10. [Step-by-Step Setup Guide](#10-step-by-step-setup-guide)
+    - [MySQL Database Setup](#step-1-mysql-database-setup)
+    - [Backend Setup (Flask)](#step-2-backend-setup-flask)
+    - [Frontend Setup (React + Vite)](#step-3-frontend-setup-react--vite)
+11. [Running the Application](#11-running-the-application)
+12. [Postman API Testing Guide](#12-postman-api-testing-guide)
+13. [Running Automated Tests](#13-automated-testing)
+14. [Troubleshooting & Common Errors](#14-troubleshooting--common-errors)
+15. [Technical Interview Discussion Guide](#15-technical-interview-discussion-guide)
+16. [Future Enhancements](#16-future-enhancements)
 
 ---
 
-## 3. Architecture
+## 1. Project Overview
 
-```mermaid
-flowchart TD
-    subgraph Client["Developer & CI/CD Layer"]
-        UI["React + Vite Dashboard<br/>(Port 5173)"]
-        GH["GitHub Webhook<br/>(PR Events)"]
-    end
+The **Student Management System** is a centralized administrative portal allowing academic institutions to create, inspect, update, search, and delete student records while tracking real-time enrollment distributions across academic departments and year levels.
 
-    subgraph API["FastAPI Gateway (Port 8000)"]
-        Routes["API Endpoints & HMAC Signature Verifier"]
-        Storage["SQLite Persistent Store<br/>(reviews.db)"]
-    end
+### Core Goals:
+- **Maintain Data Integrity:** Enforce uniqueness on institutional identifiers (`roll_number`, `email`), valid academic years (1–4), and formatted contact info.
+- **Defend Against Vulnerabilities:** 100% parameterized SQL queries preventing SQL Injection.
+- **Deliver Responsive UI/UX:** Fast, modern React dashboard with debounced search, modal dialogs, and instant toast feedback.
+- **Maintain Interview-Grade Simplicity:** Clean, modular code that is easy to explain in a technical interview without bloated external dependencies.
 
-    subgraph LangGraphWorkflow["LangGraph Review Orchestrator"]
-        N1["Node 1: ASTAnalyzer<br/>(Deterministic Rules)"]
-        N2["Node 2: Qdrant Retrieval<br/>(Semantic Code Context)"]
-        N3["Node 3: Security Agent<br/>(OWASP / Injection Checks)"]
-        N4["Node 4: Performance Agent<br/>(Algorithmic & I/O Profiling)"]
-        N5["Node 5: Style Agent<br/>(Maintainability & Clean Architecture)"]
-        N6["Node 6: Guardrail Aggregator<br/>(Pydantic Validation & Deduplication)"]
-        N7["Node 7: Quality Gate Engine<br/>(PASS / FAIL Verdict)"]
-    end
+---
 
-    subgraph StorageLayer["Vector & Context Layer"]
-        Qdrant["Qdrant Vector Database<br/>(Embedded In-Memory or Server :6333)"]
-        Embedder["Embedding Provider<br/>(Local Hashing / OpenAI)"]
-    end
+## 2. Problem Statement
 
-    UI -->|"POST /api/v1/reviews"| Routes
-    GH -->|"POST /api/v1/webhooks/github"| Routes
-    Routes -->|"Run Workflow"| N1
-    N1 --> N2
-    N2 <-->|"Vector Search"| Qdrant
-    Qdrant <--> Embedder
-    N2 --> N3
-    N3 --> N4
-    N4 --> N5
-    N5 --> N6
-    N6 --> N7
-    N7 -->|"Persist Result"| Storage
-    Storage -->|"Review Audit & Metrics"| UI
-```
+Colleges and universities often struggle with fragmented student spreadsheets:
+1. **Data Inconsistency & Collisions:** Duplicate roll numbers or malformed emails create record collisions.
+2. **Lack of Instant Institutional Insights:** Department heads lack real-time visibility into student counts per discipline and cohort.
+3. **Security Vulnerabilities:** Naive systems constructed with string-concatenated SQL queries are vulnerable to SQL Injection attacks.
+4. **Poor User Experience:** Reloading the entire webpage on every form submit disrupts administrative workflows.
+
+**Solution:** This application provides an atomic, transactional MySQL backend coupled with an interactive Single Page Application (SPA) frontend in React, ensuring real-time responsiveness and rigorous validation.
+
+---
+
+## 3. Key Features
+
+- **Executive Analytics Dashboard:**
+  - Real-time KPI summary cards (Total Students, Department Count, Senior Cohort, Freshman Cohort).
+  - Department breakdown progress bars showing percentages and counts.
+  - 4-year curriculum enrollment distribution.
+  - Recent student registrations table with quick link to directory.
+- **Full CRUD Management:**
+  - **Create:** Modal form with real-time field validation and duplicate check.
+  - **Read:** Formatted student table with roll number badges, department pills, and quick action icons.
+  - **Update:** Pre-filled edit form with change detection and conflict checks.
+  - **Delete:** Safety confirmation dialog showing student name and roll number before permanent deletion.
+- **Debounced Live Search & Filtering:**
+  - Search by full name, roll number, or department with a 350ms debounce to prevent API flooding.
+  - Dropdown filter by academic department.
+  - Dropdown filter by academic year (1st, 2nd, 3rd, 4th Year).
+- **Comprehensive User Feedback:**
+  - Auto-dismissing success, error, and informational toast notifications.
+  - Inline field-level error messages directly under form inputs.
+  - Loading spinners during asynchronous network requests.
+  - Friendly empty-state illustrations when no records exist or search finds zero matches.
+- **Student Profile Modal:**
+  - Detailed card view displaying enrollment dates, last updated timestamp, contact info, and direct link to edit.
 
 ---
 
 ## 4. Technology Stack
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Backend** | Python 3.12, FastAPI 0.162, Uvicorn 0.54, Pydantic v2 (2.14), Pydantic Settings |
-| **Agent Orchestration** | LangGraph 1.2, LangChain Core 1.7 |
-| **Static Code Analysis** | Python `ast` Abstract Syntax Tree module (Deterministic Engine) |
-| **Vector Database** | Qdrant Client 1.20 (Embedded `:memory:` mode & Server mode) |
-| **Embeddings** | Deterministic 384-dimensional Token Projection (Local) / OpenAI Embeddings |
-| **Persistence** | SQLite 3 (`backend/app/data/reviews.db`) |
-| **Frontend** | React 19, TypeScript 5.8, Vite 8.3, Tailwind CSS v4, Lucide Icons |
-| **Testing** | Pytest 9.2, Pytest-Asyncio 1.4, Starlette/FastAPI TestClient, Httpx |
-| **DevOps** | Docker, Docker Compose, Nginx Alpine, GitHub Actions CI |
+### Frontend
+- **React.js 19**: Component-based UI rendering with Virtual DOM.
+- **JavaScript (ES6+)**: Modern syntax (`async`/`await`, destructuring, arrow functions, modules).
+- **React Hooks**: `useState` (local state), `useEffect` (side-effects & data fetching), `useCallback` (memoized queries).
+- **Fetch API**: Native browser HTTP client for RESTful JSON communication.
+- **Vite 8**: Ultra-fast build tool and local development server with API proxying.
+- **Lucide React**: Clean, lightweight SVG iconography.
+- **Plain CSS3**: Custom design system using CSS custom properties (variables), Flexbox, CSS Grid, and responsive media queries.
+
+### Backend
+- **Python 3.12+**: High-level readable backend language.
+- **Flask 3.1**: Lightweight, flexible micro-web framework.
+- **Flask-CORS**: Secure Cross-Origin Resource Sharing handling.
+- **mysql-connector-python**: Official Oracle MySQL database driver for Python.
+- **python-dotenv**: Environment variable management keeping credentials out of source code.
+- **Pytest**: Industry-standard Python automated testing framework.
+
+### Database
+- **MySQL 8.0+ / MariaDB**: Relational Database Management System (RDBMS) with ACID transactions, unique indexes, and foreign constraints.
+- **SQLite (Fallback / Testing)**: Built-in Python zero-dependency engine for running isolated automated tests without external database setup.
 
 ---
 
-## 5. Folder Structure
+## 5. System Architecture & Data Flow
+
+The application follows a classic 3-Tier Layered Architecture:
+
+```mermaid
+flowchart TD
+    subgraph Client ["Frontend (React SPA)"]
+        UI["React UI Components<br/>(Dashboard / Students Page)"]
+        State["React State & Hooks<br/>(useState / useEffect)"]
+        APIClient["API Client Layer<br/>(studentApi.js)"]
+        UI <--> State
+        State <--> APIClient
+    end
+
+    subgraph Server ["Backend (Python Flask)"]
+        Routes["Routes Layer<br/>(student_routes.py)"]
+        Validators["Validation Layer<br/>(validators.py)"]
+        Service["Service Layer<br/>(student_service.py)"]
+        DBMgr["Database Manager<br/>(db.py - Context Manager)"]
+
+        Routes --> Validators
+        Validators --> Routes
+        Routes --> Service
+        Service --> DBMgr
+    end
+
+    subgraph Database ["Database Layer"]
+        MySQL[("MySQL Database<br/>student_management_db")]
+        DBMgr <-->|Parameterized SQL| MySQL
+    end
+
+    APIClient <-->|"JSON over HTTP (REST APIs)"| Routes
+```
+
+### Complete End-to-End Data Flow:
+```
+1. User types input into React Form
+         ↓
+2. React validates format client-side (instant feedback)
+         ↓
+3. studentApi.js dispatches HTTP Request (POST/PUT/GET/DELETE)
+         ↓
+4. Flask student_routes.py receives request & parses JSON
+         ↓
+5. validators.py conducts authoritative server-side checks
+         ↓
+6. student_service.py coordinates business logic & unique conflict checks
+         ↓
+7. db.py executes parameterized SQL (%s) inside an atomic transaction
+         ↓
+8. MySQL commits changes and returns affected rows / IDs
+         ↓
+9. Flask returns structured JSON response with proper HTTP Status Code (200/201/400/404/409)
+         ↓
+10. React receives JSON, updates state, and renders toast notification
+```
+
+---
+
+## 6. Folder Structure
 
 ```
-multi-agent-code-reviewer/
+d:/PROJECT/
+├── .env.example                # Root environment template
+├── .gitignore                  # Git exclusions (credentials, node_modules, .venv)
+├── README.md                   # Complete documentation
 ├── backend/
-│   ├── app/
+│   ├── app.py                  # Flask entrypoint & application factory
+│   ├── config.py               # Environment configuration loader
+│   ├── db.py                   # MySQL connection pool & cursor context manager
+│   ├── requirements.txt        # Backend Python dependencies
+│   ├── .env.example            # Backend-specific environment template
+│   ├── routes/
 │   │   ├── __init__.py
-│   │   ├── main.py                     # FastAPI application & middleware
-│   │   ├── config.py                   # Pydantic Settings configuration
-│   │   ├── api/
-│   │   │   ├── routes_health.py        # /health diagnostic endpoint
-│   │   │   ├── routes_review.py        # /api/v1/reviews endpoints
-│   │   │   ├── routes_index.py         # /api/v1/index & /api/v1/search
-│   │   │   └── routes_webhooks.py      # /api/v1/webhooks/github PR handler
-│   │   ├── agents/
-│   │   │   ├── security_agent.py       # Specialized Security Agent
-│   │   │   ├── performance_agent.py    # Specialized Performance Agent
-│   │   │   ├── style_agent.py          # Specialized Style Agent
-│   │   │   └── shared.py               # Findings deduplication logic
-│   │   ├── workflow/
-│   │   │   ├── graph.py                # LangGraph StateGraph compilation
-│   │   │   ├── state.py                # TypedDict review workflow state
-│   │   │   └── nodes.py                # LangGraph orchestration nodes
-│   │   ├── analysis/
-│   │   │   ├── ast_analyzer.py         # AST parser & coordinator
-│   │   │   ├── security_rules.py       # Deterministic security visitors
-│   │   │   ├── performance_rules.py    # Deterministic performance visitors
-│   │   │   └── style_rules.py          # Deterministic style & PEP 8 visitors
-│   │   ├── retrieval/
-│   │   │   ├── embeddings.py           # Local deterministic & OpenAI vectorizers
-│   │   │   ├── qdrant_store.py         # Qdrant client adapter (embedded/server)
-│   │   │   └── code_indexer.py         # Safe directory scanner & chunker
-│   │   ├── services/
-│   │   │   ├── review_service.py       # Review orchestration & persistence
-│   │   │   ├── quality_gate.py         # Threshold policy evaluation
-│   │   │   ├── llm_service.py          # OpenAI-compatible API adapter
-│   │   │   └── storage.py              # SQLite review storage & metrics
-│   │   ├── schemas/
-│   │   │   ├── review.py               # Pydantic models & validation rules
-│   │   │   ├── index.py                # Indexing & search models
-│   │   │   └── webhook.py              # GitHub webhook schemas
-│   │   └── security/
-│   │       └── webhook_verification.py # HMAC-SHA256 signature verification
-│   ├── tests/
-│   │   ├── test_health.py              # Diagnostics endpoint tests
-│   │   ├── test_ast_analyzer.py        # Static rule detection tests
-│   │   ├── test_workflow.py            # LangGraph execution tests
-│   │   ├── test_quality_gate.py        # Quality gate PASS/FAIL/ERROR tests
-│   │   ├── test_api_reviews.py         # End-to-end API review tests
-│   │   ├── test_retrieval.py           # Embeddings & chunking tests
-│   │   └── test_webhooks.py            # GitHub signature & PR simulation tests
-│   ├── requirements.txt
-│   └── Dockerfile
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/                 # Navbar, SeverityBadge, GateStatusBadge
-│   │   ├── pages/
-│   │   │   ├── OverviewPage.tsx        # Dashboard metrics & review audit log
-│   │   │   ├── CodeReviewPage.tsx      # Code editor, presets & findings breakdown
-│   │   │   ├── RepositoryIndexPage.tsx # Local codebase indexer & vector search
-│   │   │   ├── GitHubIntegrationPage.tsx# Webhook setup & PR simulator
-│   │   │   └── SettingsPage.tsx        # Threshold settings & system diagnostics
-│   │   ├── services/
-│   │   │   └── api.ts                  # Typed client for backend REST API
-│   │   ├── types/
-│   │   │   └── review.ts               # Shared TypeScript domain models
-│   │   ├── App.tsx                     # Main layout & navigation
-│   │   └── main.tsx                    # React DOM entrypoint
-│   ├── nginx.conf                      # Docker production proxy configuration
-│   ├── package.json
-│   └── Dockerfile
-│
-├── .github/
-│   └── workflows/
-│       └── ci.yml                      # Automated GitHub Actions test pipeline
-│
-├── docker-compose.yml                  # Multi-container orchestration
-├── .env.example                        # Template configuration file
-├── .gitignore
-├── pytest.ini
-└── README.md
+│   │   └── student_routes.py   # REST API endpoints (GET, POST, PUT, DELETE)
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── student_service.py  # Business logic & parameterized SQL execution
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   └── validators.py       # Server-side validation rules & sanitization
+│   ├── sql/
+│   │   └── schema.sql          # MySQL database schema & seed data
+│   └── tests/
+│       ├── __init__.py
+│       └── test_api.py         # Pytest automated test suite (20 tests)
+└── frontend/
+    ├── package.json            # Node dependencies & npm scripts
+    ├── index.html              # Single Page Application HTML host
+    ├── vite.config.js          # Vite configuration & dev API proxy
+    └── src/
+        ├── main.jsx            # React root mount
+        ├── App.jsx             # Top-level shell with navigation & toasts
+        ├── api/
+        │   └── studentApi.js   # Centralized Fetch API client
+        ├── components/
+        │   ├── Sidebar.jsx     # Navigation sidebar
+        │   ├── Header.jsx      # Top header with health indicator & profile
+        │   ├── StatCard.jsx    # Metric KPI summary card
+        │   ├── SearchBar.jsx   # Debounced search bar
+        │   ├── StudentTable.jsx# Tabulated student listing
+        │   ├── StudentForm.jsx # Add / Edit modal form
+        │   ├── ConfirmDialog.jsx# Delete confirmation modal
+        │   ├── StudentDetailModal.jsx # Read-only profile view
+        │   └── Notification.jsx# Animated toast alerts
+        ├── pages/
+        │   ├── Dashboard.jsx   # Analytics & KPI overview
+        │   └── Students.jsx    # Complete student directory management
+        └── styles/
+            ├── global.css      # CSS variables, reset, modal & button styles
+            ├── dashboard.css   # Analytics grids, stat cards & progress bars
+            └── students.css    # Sidebar, data table, toolbar & toast styles
 ```
 
 ---
 
-## 6. Deterministic Static Analysis Rules
+## 7. Database Schema & Data Model
 
-The application implements structural AST visitors across three major categories:
+### Database Name: `student_management_db`
+### Table: `students`
 
-### Security Rules
-- **`SEC001` (Critical):** Detects `eval()` on dynamic or untrusted expressions.
-- **`SEC002` (Critical):** Detects `exec()` on dynamic code strings.
-- **`SEC003` (Critical / High):** Detects `subprocess` execution with `shell=True` or direct `os.system()` / `os.popen()` command concatenation.
-- **`SEC004` (High):** Flags hardcoded API keys, secrets, access tokens, and passwords assigned string literals (masking snippets in reports).
-- **`SEC005` (High):** Identifies dynamic SQL query construction via f-strings or string concatenation (`+`).
-- **`SEC006` (High):** Detects unsafe deserialization (`pickle.loads()` or `yaml.load()` without SafeLoader).
-- **`SEC007` (Medium):** Detects cryptographically broken hashing algorithms (`md5`, `sha1`).
+| Column Name | Data Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `INT` | `PRIMARY KEY`, `AUTO_INCREMENT` | Unique internal record identifier |
+| `roll_number` | `VARCHAR(50)` | `NOT NULL`, `UNIQUE` | Institutional roll number (e.g. `2024EIE001`) |
+| `full_name` | `VARCHAR(100)` | `NOT NULL` | Student's full legal name |
+| `email` | `VARCHAR(100)` | `NOT NULL`, `UNIQUE` | Institutional email address |
+| `department` | `VARCHAR(50)` | `NOT NULL` | Engineering department / discipline |
+| `year` | `INT` | `NOT NULL`, `CHECK (year BETWEEN 1 AND 4)` | Academic year level (1 to 4) |
+| `phone` | `VARCHAR(20)` | `NULL` | Optional contact telephone number |
+| `created_at` | `TIMESTAMP` | `DEFAULT CURRENT_TIMESTAMP` | Automatic record creation timestamp |
+| `updated_at` | `TIMESTAMP` | `DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP` | Automatic update timestamp |
 
-### Performance Rules
-- **`PERF001` (Medium):** Repeated string concatenation (`+=`) inside `for` or `while` loops (O(N²) memory allocation).
-- **`PERF002` (Low):** Repeated linear membership test (`item in [...]`) inside loops.
-- **`PERF003` (Low):** File opened via `open()` without a `with` context manager.
-- **`PERF004` (Medium):** Repeated regex pattern compilation (`re.compile`) inside loop bodies.
-- **`PERF005` (High):** Synchronous blocking I/O calls (`time.sleep`, `requests.get`) inside `async def` functions.
-
-### Style & Maintainability Rules
-- **`STY001` (Medium / Low):** Bare `except:` or broad `except Exception:` silently suppressing errors with `pass`.
-- **`STY002` (High):** Mutable default arguments in function definitions (`def fn(items=[])`).
-- **`STY003` (Medium):** Functions with excessive parameters (> 6 parameters).
-- **`STY004` (Low):** Overly long functions (> 60 lines of code).
-- **`STY005` (Low):** Function names violating PEP 8 `snake_case` naming conventions.
+### Indexes:
+- `idx_students_roll_number` on `roll_number` (speeds up roll number lookups).
+- `idx_students_full_name` on `full_name` (speeds up wildcard name searches).
+- `idx_students_department` on `department` (speeds up department filtering and group-by stats).
 
 ---
 
-## 7. Local Setup (Without Docker)
+## 8. REST API Documentation
 
-### Prerequisites
-- Python 3.11+ (Python 3.12 recommended)
-- Node.js 18+ (Node 22 recommended)
-- Git
+All API routes are prefixed with `/api`. Responses are uniformly formatted as JSON.
 
-### 1. Backend Setup
-```bash
-# Navigate to backend directory
-cd backend
+| Method | Endpoint | Description | Status Codes |
+| :--- | :--- | :--- | :--- |
+| **GET** | `/api/health` | Verify server status & database connection | `200 OK`, `503 Service Unavailable` |
+| **GET** | `/api/students` | Retrieve all student records | `200 OK`, `500 Server Error` |
+| **GET** | `/api/students/<id>` | Retrieve single student details by ID | `200 OK`, `404 Not Found` |
+| **POST** | `/api/students` | Create a new student record | `201 Created`, `400 Bad Request`, `409 Conflict` |
+| **PUT** | `/api/students/<id>` | Update an existing student record | `200 OK`, `400 Bad Request`, `404 Not Found`, `409 Conflict` |
+| **DELETE**| `/api/students/<id>` | Delete a student record by ID | `200 OK`, `404 Not Found` |
+| **GET** | `/api/students/search?q=<term>` | Search students by name, roll no, or department | `200 OK` |
+| **GET** | `/api/dashboard/stats` | Aggregated statistics (totals, dept & year counts) | `200 OK` |
 
-# Create and activate a Python virtual environment
-python -m venv .venv
+### Sample API Payloads & Responses:
 
-# On Linux/macOS:
-source .venv/bin/activate
-# On Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-
-# Install backend dependencies
-pip install -r requirements.txt
-
-# Start the FastAPI server (runs with embedded Qdrant and local embeddings by default)
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+#### 1. Create Student (`POST /api/students`)
+**Request Body:**
+```json
+{
+  "roll_number": "2024EIE010",
+  "full_name": "Rohan Deshmukh",
+  "email": "rohan.d@college.edu",
+  "department": "Electronics & Instrumentation",
+  "year": 3,
+  "phone": "+91 98765 12345"
+}
 ```
-The backend API is now running at `http://localhost:8000`. Interactive OpenAPI documentation is available at `http://localhost:8000/docs`.
+**Response (`201 Created`):**
+```json
+{
+  "success": true,
+  "message": "Student created successfully.",
+  "data": {
+    "id": 9,
+    "roll_number": "2024EIE010",
+    "full_name": "Rohan Deshmukh",
+    "email": "rohan.d@college.edu",
+    "department": "Electronics & Instrumentation",
+    "year": 3,
+    "phone": "+91 98765 12345",
+    "created_at": "2026-10-30T10:30:00",
+    "updated_at": "2026-10-30T10:30:00"
+  }
+}
+```
 
-### 2. Frontend Setup
-In a new terminal window:
-```bash
-# Navigate to frontend directory
-cd frontend
+#### 2. Duplicate Constraint Violation (`409 Conflict`)
+```json
+{
+  "success": false,
+  "error": "A student with roll number '2024EIE010' already exists.",
+  "errors": {
+    "roll_number": "A student with roll number '2024EIE010' already exists."
+  }
+}
+```
 
-# Install dependencies
+#### 3. Dashboard Statistics (`GET /api/dashboard/stats`)
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "total_students": 8,
+    "department_counts": {
+      "Computer Science": 2,
+      "Electronics & Instrumentation": 2,
+      "Electrical Engineering": 1,
+      "Electronics & Communication": 1,
+      "Information Technology": 1,
+      "Mechanical Engineering": 1
+    },
+    "year_counts": {
+      "1": 2,
+      "2": 2,
+      "3": 2,
+      "4": 2
+    },
+    "recent_students": [...]
+  }
+}
+```
+
+---
+
+## 9. Prerequisites
+
+Before running the application, make sure you have:
+1. **Python 3.10+** (Python 3.12 recommended)
+2. **Node.js 18+** and **npm**
+3. **MySQL Server 8.0+** (or **XAMPP** / **MariaDB**)
+
+---
+
+## 10. Step-by-Step Setup Guide
+
+### Step 1: MySQL Database Setup
+
+1. Open your MySQL client (MySQL Workbench, MySQL Command Line, or phpMyAdmin in XAMPP).
+2. Execute the initialization script provided in [`backend/sql/schema.sql`](backend/sql/schema.sql):
+
+```sql
+-- In MySQL Shell or Workbench:
+source d:/PROJECT/backend/sql/schema.sql;
+```
+
+Or copy-paste the contents of `backend/sql/schema.sql` into your MySQL query window and run. This creates the `student_management_db` database, the `students` table, performance indexes, and seed sample students.
+
+---
+
+### Step 2: Backend Setup (Flask)
+
+1. Open PowerShell or Terminal and navigate to the project root:
+```powershell
+cd d:\PROJECT
+```
+
+2. Activate the virtual environment:
+```powershell
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+
+# Or Command Prompt (cmd):
+.\.venv\Scripts\activate.bat
+```
+
+3. Ensure backend dependencies are installed:
+```powershell
+pip install -r backend/requirements.txt
+```
+
+4. Create your backend `.env` configuration file:
+Create `backend/.env` (copy from `backend/.env.example`):
+```env
+FLASK_APP=app.py
+FLASK_ENV=development
+FLASK_DEBUG=True
+PORT=5000
+
+# Set your actual local MySQL credentials:
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_mysql_password
+DB_NAME=student_management_db
+```
+
+> **Note on Zero-Dependency Testing:** If MySQL is not running on your computer yet, you can set `DB_TYPE=sqlite` in `.env` for zero-configuration local runs! The application automatically initializes SQLite tables and executes the exact same operations seamlessly.
+
+---
+
+### Step 3: Frontend Setup (React + Vite)
+
+1. Open a new terminal window and navigate to the frontend folder:
+```powershell
+cd d:\PROJECT\frontend
+```
+
+2. Install frontend dependencies:
+```powershell
 npm install
+```
 
-# Start the Vite development server
+---
+
+## 11. Running the Application
+
+### 1. Start the Flask Backend Server
+In your first terminal (with `.venv` activated):
+```powershell
+cd d:\PROJECT\backend
+python app.py
+```
+Backend will start on: **`http://localhost:5000`**
+
+### 2. Start the React Frontend Server
+In your second terminal:
+```powershell
+cd d:\PROJECT\frontend
 npm run dev
 ```
-Open your browser at `http://localhost:5173`.
+Frontend will start on: **`http://localhost:5173`**
+
+Open **`http://localhost:5173`** in your web browser to access the application!
 
 ---
 
-## 8. Docker Setup
+## 12. Postman API Testing Guide
 
-To run the full stack (FastAPI Backend + React Frontend + Qdrant Vector Database) in Docker containers:
+You can test all endpoints using Postman or `curl`:
 
-```bash
-# 1. Copy environment template
-cp .env.example .env
+1. **Health Check:**
+   - Method: `GET`
+   - URL: `http://localhost:5000/api/health`
 
-# 2. Build and start containers with Docker Compose
-docker compose up --build -d
+2. **Retrieve All Students:**
+   - Method: `GET`
+   - URL: `http://localhost:5000/api/students`
+
+3. **Register New Student:**
+   - Method: `POST`
+   - URL: `http://localhost:5000/api/students`
+   - Headers: `Content-Type: application/json`
+   - Body (raw JSON):
+     ```json
+     {
+       "roll_number": "2024EIE099",
+       "full_name": "Kavya S",
+       "email": "kavya.s@college.edu",
+       "department": "Electronics & Instrumentation",
+       "year": 2,
+       "phone": "+91 98765 00000"
+     }
+     ```
+
+4. **Search Students:**
+   - Method: `GET`
+   - URL: `http://localhost:5000/api/students/search?q=Instrumentation`
+
+5. **Update Student Details:**
+   - Method: `PUT`
+   - URL: `http://localhost:5000/api/students/1`
+   - Headers: `Content-Type: application/json`
+   - Body (raw JSON):
+     ```json
+     {
+       "year": 4,
+       "phone": "+91 99999 11111"
+     }
+     ```
+
+6. **Delete Student Record:**
+   - Method: `DELETE`
+   - URL: `http://localhost:5000/api/students/1`
+
+---
+
+## 13. Automated Testing
+
+The project includes 20 comprehensive unit and integration tests covering all routes, validation rules, HTTP status codes, and database transactions.
+
+To run the automated tests:
+```powershell
+# From project root with .venv activated:
+python -m pytest backend/tests/test_api.py -v
 ```
 
-### Container Endpoints:
-- **Frontend Dashboard:** `http://localhost:5173`
-- **Backend API & Health:** `http://localhost:8000/health`
-- **Interactive Swagger Docs:** `http://localhost:8000/docs`
-- **Qdrant Vector Database:** `http://localhost:6333`
+### Verified Test Results:
+```text
+backend/tests/test_api.py::test_health_check PASSED                      [  5%]
+backend/tests/test_api.py::test_root_welcome_info PASSED                 [ 10%]
+backend/tests/test_api.py::test_create_student_success PASSED            [ 15%]
+backend/tests/test_api.py::test_create_student_missing_required_fields PASSED [ 20%]
+backend/tests/test_api.py::test_create_student_whitespace_fields PASSED  [ 25%]
+backend/tests/test_api.py::test_create_student_invalid_email PASSED      [ 30%]
+backend/tests/test_api.py::test_create_student_invalid_year PASSED       [ 35%]
+backend/tests/test_api.py::test_create_student_duplicate_roll_number PASSED [ 40%]
+backend/tests/test_api.py::test_create_student_duplicate_email PASSED    [ 45%]
+backend/tests/test_api.py::test_get_all_students_empty PASSED            [ 50%]
+backend/tests/test_api.py::test_get_all_students_populated PASSED        [ 55%]
+backend/tests/test_api.py::test_get_student_by_id_success PASSED         [ 60%]
+backend/tests/test_api.py::test_get_student_by_id_not_found PASSED       [ 65%]
+backend/tests/test_api.py::test_update_student_success PASSED            [ 70%]
+backend/tests/test_api.py::test_update_student_not_found PASSED          [ 75%]
+backend/tests/test_api.py::test_update_student_conflict PASSED           [ 80%]
+backend/tests/test_api.py::test_delete_student_success PASSED            [ 85%]
+backend/tests/test_api.py::test_delete_student_not_found PASSED          [ 90%]
+backend/tests/test_api.py::test_search_students PASSED                   [ 95%]
+backend/tests/test_api.py::test_dashboard_stats PASSED                   [100%]
 
-To stop the containers:
-```bash
-docker compose down
+============================= 20 passed in 1.41s ==============================
 ```
 
 ---
 
-## 9. Environment Variables Configuration
+## 14. Troubleshooting & Common Errors
 
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `OPENAI_API_KEY` | *(None)* | Optional API key for OpenAI-assisted agent reviews. |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Custom endpoint for OpenAI-compatible LLMs (vLLM, Ollama, Groq). |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Chat model name for agent evaluation. |
-| `QDRANT_MODE` | `embedded` | `embedded` (in-memory, no external service) or `server` (connects via network). |
-| `QDRANT_HOST` | `localhost` | Qdrant daemon host when in server mode. |
-| `QDRANT_PORT` | `6333` | Qdrant daemon port. |
-| `EMBEDDING_PROVIDER` | `local` | `local` (deterministic offline 384-dim hash projection) or `openai`. |
-| `GITHUB_WEBHOOK_SECRET` | *(None)* | Shared secret for verifying GitHub webhook HMAC-SHA256 signatures. |
-| `GITHUB_TOKEN` | *(None)* | GitHub Personal Access Token for posting comments to live PRs. |
-| `GITHUB_DRY_RUN` | `true` | When `true`, formats review comments without publishing them to GitHub. |
-| `GATE_BLOCK_ON_CRITICAL` | `true` | Fails the quality gate if any Critical finding is reported. |
-| `GATE_BLOCK_ON_HIGH` | `true` | Fails the quality gate if any High severity finding is reported. |
-| `GATE_MAX_MEDIUM` | `5` | Maximum allowed Medium findings before gate failure. |
+### 1. `Can't connect to MySQL server on 'localhost' (10061)`
+- **Reason:** The MySQL service is not running on your computer.
+- **Solution:** 
+  - On Windows, open `services.msc` and verify that the `MySQL` or `MySQL80` service is **Running**.
+  - In XAMPP, open the XAMPP Control Panel and click **Start** next to MySQL.
+  - Alternatively, test locally by setting `DB_TYPE=sqlite` in `backend/.env`.
 
----
+### 2. `Access denied for user 'root'@'localhost'`
+- **Reason:** Incorrect database password in `backend/.env`.
+- **Solution:** Update `DB_PASSWORD` in `backend/.env` to match your local MySQL root password.
 
-## 10. Running Automated Tests
+### 3. `CORS policy: No 'Access-Control-Allow-Origin' header`
+- **Reason:** Direct API calls from a different port without CORS headers.
+- **Solution:** `Flask-CORS` is enabled in `app.py`. Ensure requests hit `/api/*`. Additionally, Vite is pre-configured with a development proxy in `vite.config.js`.
 
-The test suite contains **31 automated tests** covering health diagnostics, AST static analysis, LangGraph workflow execution, Quality Gate evaluation, API endpoints, Qdrant retrieval, and GitHub webhook verification:
-
-```bash
-# Run pytest test suite from project root
-pytest backend/tests/ -v
-```
-
-### Test Coverage Highlights:
-- **`test_ast_analyzer.py` (8 tests):** Validates detection of `eval`, `exec`, `subprocess.run(shell=True)`, hardcoded credentials, SQL injection patterns, loop string concatenation, unclosed files, mutable defaults, and syntax errors.
-- **`test_quality_gate.py` (6 tests):** Validates clean `PASS`, `FAIL` on Critical/High, threshold overrides, `ERROR` on syntax errors, and `INCOMPLETE` on analysis failures.
-- **`test_health.py` (2 tests):** Validates diagnostic component reporting without API keys.
-- **`test_workflow.py` (2 tests):** Exercises LangGraph state transitions and node executions.
-- **`test_api_reviews.py` (5 tests):** Validates submission, 422 on empty code, schema errors, persistence in SQLite, and metrics calculations.
-- **`test_retrieval.py` (4 tests):** Validates L2-normalized 384-dimensional vector embedding, file chunking, directory traversal security, and semantic search.
-- **`test_webhooks.py` (4 tests):** Validates HMAC-SHA256 signature verification, replay protection, ping handling, and dry-run PR comment generation.
+### 4. `Port 5000 is already in use`
+- **Reason:** Another process is occupying port 5000.
+- **Solution:** Change `PORT=5001` in `backend/.env` and adjust the proxy target in `frontend/vite.config.js`.
 
 ---
 
-## 11. API Endpoints
+## 15. Technical Interview Discussion Guide
 
-### Health & Diagnostics
-- `GET /health`  
-  Returns overall service health, operating mode (`production` vs `local-demonstration`), vector database mode, and provider statuses.
+As an **Electronics & Instrumentation Engineering** student interviewing for software engineering roles, interviewers will appreciate your ability to explain core computer science concepts demonstrated in this project:
 
-### Code Reviews
-- `POST /api/v1/reviews`  
-  Submits Python code for inspection.  
-  *Request:*
-  ```json
-  {
-    "code": "eval(user_input)\n",
-    "file_path": "auth.py",
-    "scope": "ALL",
-    "enable_llm": false
-  }
-  ```
-  *Response (201 Created):*
-  ```json
-  {
-    "review_id": "8f2a1b9c-...",
-    "timestamp": "2026-10-29T10:00:00Z",
-    "file_path": "auth.py",
-    "scope": "ALL",
-    "findings": [
-      {
-        "id": "e4b1a2c3-...",
-        "rule_id": "SEC001",
-        "category": "SECURITY",
-        "severity": "CRITICAL",
-        "title": "Unsafe dynamic execution via eval()",
-        "explanation": "eval() parses and executes arbitrary Python expressions...",
-        "remediation": "Replace eval() with safe alternatives like ast.literal_eval()...",
-        "line_number": 1,
-        "source": "AST",
-        "confidence": 0.95
-      }
-    ],
-    "quality_gate": {
-      "status": "FAIL",
-      "summary": "Quality Gate FAILED: 1 blocking issue(s) identified.",
-      "blocking_findings": [...],
-      "severity_counts": { "CRITICAL": 1, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0 },
-      "explanation": "Quality gate blocked by the following policy triggers: 1 Critical finding(s) detected..."
-    },
-    "execution_metadata": {
-      "duration_ms": 14.2,
-      "deterministic_ast_ran": true,
-      "llm_agents_ran": false
-    }
-  }
-  ```
+### Q1: Why did you separate Routes, Services, and Validators?
+> *"In instrumentation, we maintain modular isolation between sensor conditioning, analog-to-digital conversion, and digital processing so failures in one stage don't contaminate the others. Similarly in software, **Separation of Concerns** means `student_routes.py` only handles HTTP parsing and status codes, `validators.py` enforces data integrity rules, and `student_service.py` executes SQL queries. This makes unit testing straightforward and code maintenance painless."*
 
-- `GET /api/v1/reviews/{review_id}`  
-  Retrieves a past code review by UUID.
+### Q2: How did you prevent SQL Injection?
+> *"I never use Python f-strings or string concatenation (`+`) to build SQL queries. Instead, I use **parameterized queries** with `%s` placeholders. When parameters are sent to `mysql-connector-python`, the database engine treats input parameters strictly as literal values rather than executable SQL commands, completely neutralizing SQL Injection attempts."*
 
-- `GET /api/v1/reviews`  
-  Lists paginated code review summaries.
+### Q3: Why is server-side validation necessary if client-side validation already exists?
+> *"Client-side validation in React improves user experience by providing instant visual feedback without waiting for a network round-trip. However, client-side validation can be bypassed by an attacker using Postman, `curl`, or browser developer tools. Therefore, backend validation in `validators.py` is the **authoritative gatekeeper** protecting database integrity."*
 
-- `GET /api/v1/reviews/metrics/summary`  
-  Returns total reviews, pass rate, failed gates count, and severity distributions.
+### Q4: Why did you implement debouncing on the search input?
+> *"Without debouncing, typing a 10-character student name would fire 10 simultaneous HTTP requests to the Flask server, causing race conditions and unnecessary database load. By implementing a 350ms debounce with `setTimeout` inside a `useEffect` cleanup hook, the request is only dispatched after the user pauses typing."*
 
-### Repository Indexing & Semantic Search
-- `POST /api/v1/index`  
-  Indexes a local project directory into Qdrant code chunks.
-- `GET /api/v1/index/status`  
-  Returns current chunk counts and vector store mode.
-- `POST /api/v1/search`  
-  Executes semantic similarity search over indexed code chunks.
-
-### GitHub Integration
-- `GET /api/v1/webhooks/github/status`  
-  Returns GitHub integration configuration status.
-- `POST /api/v1/webhooks/github`  
-  Receives and verifies GitHub Pull Request webhook payloads.
+### Q5: How do you handle database transactions and connection cleanup?
+> *"I created a Python context manager (`@contextmanager get_db_cursor()`) in `db.py`. If an operation succeeds, it calls `conn.commit()`. If any exception is thrown, it executes `conn.rollback()` to prevent partial state corruption, and the `finally` block guarantees that both the cursor and database connection are safely returned/closed, preventing connection leaks."*
 
 ---
 
-## 12. Security Considerations
+## 16. Future Enhancements
 
-1. **No Code Execution:** The analyzer uses Python's Abstract Syntax Tree parser. It **never runs, evals, or executes submitted code**.
-2. **Directory Traversal Defense:** The repository indexer rejects root paths (`/`, `C:\`, `C:\Windows`) and forbids path traversal.
-3. **Sensitive File Exclusions:** File indexers automatically skip `.env`, private keys (`id_rsa`), credential JSONs, `__pycache__`, and virtual environments.
-4. **Untrusted Data Handling:** Code snippets and retrieved context are treated as strictly untrusted text data and prevented from overriding prompt instructions.
-5. **No Secret Leakage:** Findings masking replaces credential values with asterisks in snippet previews.
-6. **Dry-Run by Default:** The GitHub webhook integration operates in dry-run mode unless explicitly configured with live credentials.
-
----
-
-## 13. Known Limitations & Future Enhancements
-
-### Known Limitations
-- Static AST analysis currently focuses on Python (`.py`) source code. Polyglot support (TypeScript, Go, Rust) requires tree-sitter bindings.
-- Multi-file semantic retrieval relies on local project directory indexing; remote repository indexing requires cloning or GitHub tree API access.
-
-### Future Enhancements
-- Tree-sitter integration for multi-language AST inspection (TypeScript, Java, Go).
-- Auto-generated remediation pull requests with user approval workflows.
-- Integration with GitLab Merge Requests and Bitbucket Pipelines.
+1. **Role-Based Authentication (RBAC):** Add JWT-based login for Administrators vs Faculty vs Students.
+2. **CSV / Excel Export:** Allow administrators to download filtered student rosters as `.csv` or `.xlsx` files.
+3. **Student Profile Image Upload:** Store profile pictures on AWS S3 or local static media storage.
+4. **Attendance & Marks Modules:** Extend relational schema with `courses`, `enrollments`, and `grades` tables.
+5. **Pagination:** Server-side pagination (`LIMIT` and `OFFSET`) for scaling to 50,000+ student records.

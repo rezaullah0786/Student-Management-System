@@ -1,49 +1,53 @@
 services:
+  db:
+    image: mysql:8.0
+    container_name: student_management_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: student_management_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: code_reviewer_backend
+    container_name: student_management_backend
     ports:
-      - "8000:8000"
+      - "5000:5000"
     environment:
-      - QDRANT_MODE=server
-      - QDRANT_HOST=qdrant
-      - QDRANT_PORT=6333
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - GITHUB_DRY_RUN=${GITHUB_DRY_RUN:-true}
-    volumes:
-      - backend_data:/app/app/data
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PORT=5000
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=student_management_db
     depends_on:
-      qdrant:
-        condition: service_started
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: code_reviewer_frontend
+    container_name: student_management_frontend
     ports:
       - "5173:80"
     depends_on:
       - backend
     restart: unless-stopped
 
-  qdrant:
-    image: qdrant/qdrant:v1.11.0
-    container_name: code_reviewer_qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-    restart: unless-stopped
-
 volumes:
-  backend_data:
-  qdrant_storage:
+  mysql_data:
